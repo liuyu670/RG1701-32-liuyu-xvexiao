@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mecol.bookshop_ssm.dao.CourseDao">
+    <select id="getCourseList" resultMap="courseResultMap">
+      select * from course c,teacher t where c.teacherId=t.id   order by c.id
+    </select>
+
+
+    <select id="getAllCourseList" resultMap="courseResultMap">
+        select c.id,c.courseName,c.place,c.lessonType,c.credit,t.username
+        from course c ,teacher t where  c.teacherId=t.id  order by c.id
+    </select>
+
+    <!--下面mabatis的foreach实现where in查询-->
+    <select id="getCourseListIn" resultMap="courseResultMap">
+        select c.id,c.courseName,c.place,c.lessonType,c.credit,t.username
+        from course c ,teacher t where  c.teacherId=t.id  and c.id in
+        <foreach collection="list" index="index" item="item" open="(" separator="," close=")">
+          #{item}
+        </foreach>
+        order by c.id
+
+    </select>
+
+
+    <select id="selectCourseByTeacherId" resultMap="courseResultMap"
+            parameterType="int">
+      select * from course where teacherId=#{id}
+    </select>
+
+    <select id="selectCourseByTId" resultType="com.mecol.bookshop_ssm.entity.Course">
+
+        select * from course where teacherId=#{teacherId} order by id
+    </select>
+
+    <!--下面有点问题 course teacher中都有id 同名 应该起个别名-->
+    <resultMap id="courseResultMap" type="com.mecol.bookshop_ssm.entity.Course">
+        <id property="id" column="id"/>
+            <result property="courseName" column="courseName"/>
+            <result property="place" column="place"/>
+            <result property="lessonType" column="lessonType"/>
+            <result property="credit" column="credit"/>
+            <!--多对一映射 这里只需要教师的姓名
+
+            解释下为什么不会无限查询：
+            当由课程查询教师的时候 调用id=getCourseList的select查询 是两个表联查 合成一个表
+            就会将合成表后中的id username 字段分别给teacher对象的相应属性
+
+            当由教师查询课程的时候调用id=selectCourseByTeacherId的select查询 查询的一张表course
+            此时courseResultMap中到teacher对象的时候并没有再次调用getCourseList 所以不会这样
+            无限查询下去 此时只有一张表course所以会把course中的id给teacher对象中的同名id 没有
+            username等和teacher属性相同的字段 所以teacher中的其他字段都为null
+            -->
+            <association property="teacher" javaType="com.mecol.bookshop_ssm.entity.Teacher">
+                <id property="id" column="id"/>
+
+                <result property="username" column="username"/>
+            </association>
+    </resultMap>
+
+
+
+    <delete id="delCourseById">
+        delete from course where id=#{id}
+    </delete>
+
+    <select id="getCourseById" resultType="com.mecol.bookshop_ssm.entity.Course">
+        select * from course where id=#{id}
+    </select>
+
+    <update id="updCourse" parameterType="com.mecol.bookshop_ssm.entity.Course">
+        update course
+        <set>
+            <if test="courseName!=null">
+                courseName=#{courseName},
+            </if>
+
+            <if test="place!=null">
+                place=#{place},
+            </if>
+            <if test="lessonType!=null">
+                lessonType=#{lessonType},
+            </if>
+            <if test="credit!=null">
+                credit=#{credit},
+            </if>
+            <if test="teacherId!=null">
+                teacherId=#{teacherId},
+            </if>
+        </set>
+        where id=#{id}
+
+
+    </update>
+    <insert id="insCourse" parameterType="com.mecol.bookshop_ssm.entity.Course">
+        insert into course(courseName,place,lessonType,credit,teacherId)
+        values (#{courseName},#{place},#{lessonType},#{credit},#{teacherId})
+    </insert>
+
+
+    <!--课程查询学生 是 多对多查询 这里采用一个中间表 转换成一对多查询
+        此时 如果用PageHelper分页 分页数据是错误的 因为总条数是学生的条数 不是课程的条数
+
+    <resultMap id="courseResultMap1" type="com.mecol.bookshop_ssm.entity.Course">
+        <id property="id" column="cid"/>
+        <result property="courseName" column="courseName"/>
+        <result property="place" column="place"/>
+
+        <collection property="studentList" ofType="com.mecol.bookshop_ssm.entity.Student">
+            <result property="username" column="username"/>
+        </collection>
+    </resultMap>
+
+    <select id="getStudentCourseByTeacherId" resultMap="courseResultMap1"
+    >
+        SELECT c.id AS cid ,s.username ,c.courseName,c.place
+        FROM student s
+        INNER JOIN
+        s_c_m m ON s.id=m.s_id
+        INNER JOIN course c ON m.c_id=c.id
+        where c.teacherId=#{teacherId}
+        order by s.id
+    </select>
+ -->
+    <!--下面是解决分页错误 使用嵌套sql查询 eager模式 懒加载会导致@ResponseBody错误  -->
+    <resultMap id="courseResultMap1" type="com.mecol.bookshop_ssm.entity.Course">
+        <id property="id" column="id"/>
+        <result property="courseName" column="courseName"/>
+        <result property="place" column="place"/>
+
+        <collection property="studentList" javaType="ArrayList"
+           column="id"  ofType="com.mecol.bookshop_ssm.entity.Student"
+            select="com.mecol.bookshop_ssm.dao.StudentDao.getStudentByCourseId"
+                    fetchType="eager"
+        >
+            <result property="username" column="username"/>
+        </collection>
+    </resultMap>
+
+
+    <!-- distinct是去重  -->
+    <select id="getStudentCourseByTeacherId" resultMap="courseResultMap1"
+    >
+        SELECT distinct c.id  ,c.courseName,c.place
+        FROM
+        course c
+        INNER JOIN s_c_m m ON m.c_id=c.id
+        where c.teacherId=#{teacherId}
+        order by c.id
+    </select>
+
+
+    <select id="selectCourseByStudentId" resultType="com.mecol.bookshop_ssm.entity.Course"
+    >
+        SELECT c.courseName,c.place
+        FROM course c
+        where c.id IN ( select c_id from s_c_m m where m.s_id=#{id}  )
+
+    </select>
+
+
+
+
+</mapper>
